@@ -1,0 +1,122 @@
+(clear-all)
+
+(define-model 1-hit-model 
+    
+  ;; Fixed parameters
+  (sgp :esc t :bll .5 :ol t :sim-hook "1hit-bj-number-sims" 
+       :cache-sim-hook-results t :er t :lf 0)
+  
+  ;; Adjustable parameters
+  (sgp :v nil :ans .2 :mp 10.0 :rt -60)
+  
+  ;; Game state chunk type
+  (chunk-type game-state
+     mc1 mc2 mc3 mstart mtot mresult 
+     oc1 oc2 oc3 ostart otot oresult state)
+  
+  ;; Learning chunk type
+  (chunk-type learned-info mc1 action)
+  
+  ;; Goal buffer declaration
+  (declare-buffer-usage goal game-state :all)
+  
+  ;; Basic chunks definition
+  (define-chunks win lose bust retrieving start results)
+    
+  ;; Motor module setup
+  (install-device '("motor" "keyboard"))
+  
+  ;; Production rules
+  
+  ;; Initial state - attempt to retrieve previous experience
+  (p start
+     =goal>
+       isa game-state
+       state start
+       MC1 =c
+    ==>
+     =goal>
+       state retrieving
+     +retrieval>
+       isa learned-info
+       MC1 =c
+     - action nil)
+
+  ;; Handle retrieval failure - default to stay
+  (p cant-remember-game
+     =goal>
+       isa game-state
+       state retrieving
+     ?retrieval>
+       buffer failure
+     ?manual>
+       state free
+    ==>
+     =goal>
+       state nil
+     +manual>
+       cmd press-key
+       key "s")
+  
+  ;; Apply retrieved action
+  (p remember-game
+     =goal>
+       isa game-state
+       state retrieving
+     =retrieval>
+       isa learned-info
+       action =act
+     ?manual>
+       state free
+    ==>
+     =goal>
+       state nil
+     +manual>
+       cmd press-key
+       key =act
+     @retrieval>)
+  
+  ;; Learn to hit
+  (p results-should-hit
+     =goal>
+       isa game-state
+       state results
+       mresult =outcome
+       MC1 =c
+     ?imaginal>
+       state free
+    ==>
+     !output! (I =outcome)
+     =goal>
+       state nil
+     +imaginal>
+       MC1 =c 
+       action "h")
+
+  (spp results-should-hit :u 10)
+  
+  ;; Learn to stay
+  (p results-should-stay
+     =goal>
+       isa game-state
+       state results
+       mresult =outcome
+       MC1 =c
+     ?imaginal>
+       state free
+    ==>
+     !output! (I =outcome)
+     =goal>
+       state nil
+     +imaginal>
+       MC1 =c 
+       action "s")
+  
+  ;; Clear imaginal buffer
+  (p clear-new-imaginal-chunk
+     ?imaginal>
+       state free
+       buffer full
+     ==>
+     -imaginal>)
+)
